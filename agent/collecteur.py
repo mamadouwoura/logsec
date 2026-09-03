@@ -60,6 +60,23 @@ def _powershell(commande):
             os.remove(fichier)
 
 
+def est_administrateur():
+    """Dit si le programme tourne avec les droits administrateur.
+
+    Determinant pour LogSec : sans ces droits, le journal Security est
+    totalement invisible, et avec lui les connexions, les echecs de mot de
+    passe et les creations de compte. C'est pourquoi l'agent definitif
+    tournera en service Windows sous le compte SYSTEME (phase 4).
+    """
+    sortie = _powershell(
+        "$identite = [Security.Principal.WindowsIdentity]::GetCurrent(); "
+        "$role = New-Object Security.Principal.WindowsPrincipal($identite); "
+        "if ($role.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) "
+        "{ 'OUI' } else { 'NON' }"
+    )
+    return sortie.strip() == "OUI"
+
+
 def etat_journal(nom_journal):
     """Dit si un journal est lisible, desactive, ou inaccessible.
 

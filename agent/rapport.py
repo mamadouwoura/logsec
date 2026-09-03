@@ -38,7 +38,14 @@ def analyser(jours):
     constats = []
     etats = {}
 
-    for nom_journal in signaux.journaux_surveilles():
+    # Avec les droits administrateur, le journal Security devient lisible et
+    # la surveillance change de nature : connexions, echecs de mot de passe,
+    # creations de compte. Sans ces droits, on se prive de l'essentiel, et le
+    # rapport doit le dire clairement plutot que de laisser croire que tout
+    # va bien.
+    administrateur = collecteur.est_administrateur()
+
+    for nom_journal in signaux.journaux_surveilles(inclure_admin=administrateur):
         etat, nombre = collecteur.etat_journal(nom_journal)
         etats[nom_journal] = (etat, nombre)
         if etat != collecteur.LISIBLE:
@@ -64,7 +71,7 @@ def analyser(jours):
     constats = regrouper(constats)
     constats.sort(key=lambda c: (ORDRE_GRAVITE[c["signal"]["gravite"]], c["date"]),
                   reverse=False)
-    return constats, etats
+    return constats, etats, administrateur
 
 
 # Deux evenements separes de moins de ce delai, portant le meme signal et la
@@ -123,10 +130,17 @@ def _ecart_secondes(date_a, date_b):
     return abs((fin - debut).total_seconds())
 
 
-def afficher(constats, etats, jours):
+def afficher(constats, etats, jours, administrateur):
     print("=" * 72)
     print("LogSec - rapport de poste   (" + str(jours) + " derniers jours)")
     print("=" * 72)
+
+    if not administrateur:
+        print("\nSURVEILLANCE PARTIELLE")
+        print("  Sans droits administrateur, le journal Security est invisible.")
+        print("  Sont donc ignorees : les ouvertures de session, les tentatives")
+        print("  de mot de passe et les creations de compte.")
+        print("  Relance depuis un PowerShell ouvert en administrateur.")
 
     print("\nSOURCES DE DONNEES")
     for nom_journal, (etat, nombre) in etats.items():
@@ -170,8 +184,8 @@ def afficher(constats, etats, jours):
 
 def main():
     jours = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    constats, etats = analyser(jours)
-    afficher(constats, etats, jours)
+    constats, etats, administrateur = analyser(jours)
+    afficher(constats, etats, jours, administrateur)
 
 
 if __name__ == "__main__":
