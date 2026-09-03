@@ -96,5 +96,32 @@ verifier("un evenement sans propriete ne fait pas planter l'agent",
          signaux.peripherique_de_stockage([]),
          False)
 
+print("\nRegroupement des evenements d'un meme peripherique")
+verifier("les deux evenements du disque Toshiba portent la meme cle",
+         signaux.cle_peripherique(
+             [r"USBSTOR\Disk&Ven_TOSHIBA&Prod_EXTERNAL_USB&Rev_5438\20240207002617F&0"])
+         == signaux.cle_peripherique([r"USB\VID_0480&PID_B300\20240207002617F"]),
+         True)
+verifier("deux peripheriques differents ont des cles differentes",
+         signaux.cle_peripherique([r"USBSTOR\Disk&Ven_TOSHIBA\20240207002617F&0"])
+         == signaux.cle_peripherique([r"USBSTOR\Disk&Ven_USB\SCYEFXE9GFD52L5W&0"]),
+         False)
+verifier("un identifiant vide donne une cle vide, sans planter",
+         signaux.cle_peripherique([]),
+         "")
+
+print("\nNom lisible d'un peripherique")
+verifier("le disque Toshiba est nomme",
+         signaux.decrire_peripherique(
+             [r"USBSTOR\Disk&Ven_TOSHIBA&Prod_EXTERNAL_USB&Rev_5438\2024&0"]),
+         "TOSHIBA EXTERNAL USB")
+verifier("la cle USB est nommee",
+         signaux.decrire_peripherique(
+             [r"USBSTOR\Disk&Ven_USB&Prod_Flash_Disk&Rev_1100\SCYEFX&0"]),
+         "USB Flash Disk")
+verifier("un identifiant sans marque ne rend rien plutot qu'un faux nom",
+         signaux.decrire_peripherique([r"USB\VID_0480&PID_B300\20240207002617F"]),
+         "")
+
 print("\n" + str(sum(resultats)) + " / " + str(len(resultats)) + " tests reussis")
 sys.exit(0 if all(resultats) else 1)

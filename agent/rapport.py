@@ -10,6 +10,7 @@ Utilisation :
 """
 
 import sys
+from datetime import datetime
 
 import collecteur
 import signaux
@@ -49,14 +50,77 @@ def analyser(jours):
                 continue  # evenement non catalogue : c'est du bruit
             if not signaux.retenir(signal, evenement["proprietes"]):
                 continue  # signal connu, mais rien d'anormal dans ce cas precis
+            proprietes = evenement["proprietes"]
             details = {nom: collecteur.champ(evenement, signal, nom)
                        for nom in signal.get("champs", {})}
-            constats.append({"date": evenement["date"], "signal": signal,
-                             "details": details})
+            constats.append({
+                "date": evenement["date"],
+                "signal": signal,
+                "details": details,
+                "cle": signaux.cle_de_regroupement(signal, proprietes),
+                "libelle": signaux.libelle(signal, proprietes),
+            })
 
+    constats = regrouper(constats)
     constats.sort(key=lambda c: (ORDRE_GRAVITE[c["signal"]["gravite"]], c["date"]),
                   reverse=False)
     return constats, etats
+
+
+# Deux evenements separes de moins de ce delai, portant le meme signal et la
+# meme cle, decrivent le meme fait. Une seconde suffirait pour un branchement
+# USB ; on prend large pour absorber les enchainements un peu lents.
+DELAI_REGROUPEMENT_SECONDES = 120
+
+
+def regrouper(constats):
+    """Fusionne les constats qui decrivent un seul et meme fait.
+
+    Brancher une cle USB produit deux evenements Windows : le peripherique
+    physique, puis le disque qu'il expose. Les signaler deux fois serait du
+    bruit, et le bruit est l'ennemi numero un de cet outil.
+
+    On ne fusionne que si trois conditions sont reunies : meme signal, meme
+    cle de regroupement, et proximite dans le temps. Un meme disque branche
+    le matin puis le soir doit rester deux constats distincts.
+    """
+    constats.sort(key=lambda c: c["date"])
+    regroupes = []
+
+    for constat in constats:
+        if constat["cle"]:
+            precedent = _constat_a_fusionner(regroupes, constat)
+            if precedent is not None:
+                precedent["occurrences"] += 1
+                # Un seul des evenements d'un meme materiel porte sa marque et
+                # son modele ; les autres rendent une chaine vide. On garde
+                # donc le premier libelle non vide rencontre.
+                if not precedent["libelle"]:
+                    precedent["libelle"] = constat["libelle"]
+                continue
+        constat["occurrences"] = 1
+        regroupes.append(constat)
+
+    return regroupes
+
+
+def _constat_a_fusionner(deja_vus, constat):
+    """Cherche un constat anterieur decrivant le meme fait, ou None."""
+    for candidat in reversed(deja_vus):
+        if candidat["signal"] is not constat["signal"]:
+            continue
+        if candidat["cle"] != constat["cle"]:
+            continue
+        if _ecart_secondes(candidat["date"], constat["date"]) <= DELAI_REGROUPEMENT_SECONDES:
+            return candidat
+    return None
+
+
+def _ecart_secondes(date_a, date_b):
+    """Nombre de secondes entre deux dates au format 2026-01-17T19:08:29."""
+    debut = datetime.strptime(date_a, "%Y-%m-%dT%H:%M:%S")
+    fin = datetime.strptime(date_b, "%Y-%m-%dT%H:%M:%S")
+    return abs((fin - debut).total_seconds())
 
 
 def afficher(constats, etats, jours):
@@ -86,6 +150,8 @@ def afficher(constats, etats, jours):
             gravite_precedente = signal["gravite"]
         ligne = ("  " + ETIQUETTE[signal["gravite"]].ljust(12)
                  + constat["date"].replace("T", " ") + "  " + signal["titre"])
+        if constat["libelle"]:
+            ligne += " : " + constat["libelle"]
         print(ligne)
         for nom, valeur in constat["details"].items():
             if valeur:

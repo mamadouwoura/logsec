@@ -89,6 +89,57 @@ def peripherique_de_stockage(proprietes):
     return identifiant.startswith("USBSTOR\\") or pilote == "USBSTOR"
 
 
+# ---------------------------------------------------------------------------
+# REGROUPEMENT ET LISIBILITE
+#
+# Un seul fait reel produit souvent plusieurs evenements. Brancher une cle USB
+# en genere deux : Windows enregistre separement le peripherique physique et
+# le disque qu'il expose. Signaler deux fois le meme branchement, c'est deja
+# du bruit.
+#
+# Une cle de regroupement repond a la question : ces evenements parlent-ils du
+# meme objet ? Pour un peripherique, la reponse tient dans son numero de serie.
+# ---------------------------------------------------------------------------
+
+
+def cle_peripherique(proprietes):
+    """Numero de serie du peripherique, commun a tous ses evenements.
+
+    Les deux identifiants ci-dessous designent le meme disque Toshiba :
+      USBSTOR\\Disk&Ven_TOSHIBA&Prod_EXTERNAL_USB&Rev_5438\\20240207002617F&0
+      USB\\VID_0480&PID_B300\\20240207002617F
+    Le numero de serie est le dernier segment, debarrasse du suffixe "&0"
+    que Windows ajoute pour numeroter les instances.
+    """
+    identifiant = _texte(proprietes, 0)
+    if not identifiant:
+        return ""
+    dernier_segment = identifiant.split("\\")[-1]
+    return dernier_segment.split("&")[0].upper()
+
+
+def decrire_peripherique(proprietes):
+    """Transforme un identifiant technique en nom lisible par un humain.
+
+    "USBSTOR\\Disk&Ven_TOSHIBA&Prod_EXTERNAL_USB&Rev_5438\\2024..." devient
+    "TOSHIBA EXTERNAL USB". Le responsable d'une PME ne doit pas avoir a
+    dechiffrer une chaine de constructeur pour comprendre son alerte.
+    """
+    identifiant = _texte(proprietes, 0)
+    marque = ""
+    modele = ""
+    for morceau in identifiant.replace("\\", "&").split("&"):
+        if morceau.startswith("Ven_"):
+            marque = morceau[4:].replace("_", " ").strip()
+        elif morceau.startswith("Prod_"):
+            modele = morceau[5:].replace("_", " ").strip()
+    # Chaine vide, et non un numero de serie de repli, quand le peripherique
+    # ne se nomme pas : un meme materiel produit plusieurs evenements dont
+    # certains seulement portent la marque. En rendant "" pour les autres, le
+    # regroupement sait sans ambiguite lequel des libelles retenir.
+    return (marque + " " + modele).strip()
+
+
 SIGNAUX = [
     # --- Journal System : ce que fait le systeme lui-meme ---
     {
@@ -154,6 +205,8 @@ SIGNAUX = [
                     "donnees d'une entreprise.",
         "champs": {"peripherique": 0},
         "condition": peripherique_de_stockage,
+        "cle": cle_peripherique,
+        "libelle": decrire_peripherique,
     },
 
     # --- Journal Bureau a distance ---
@@ -228,3 +281,22 @@ def retenir(signal, proprietes):
     if condition is None:
         return True
     return condition(proprietes)
+
+
+def cle_de_regroupement(signal, proprietes):
+    """Identifie l'objet dont parle l'evenement, ou None si le signal ne se
+    regroupe pas. Deux evenements portant la meme cle decrivent le meme fait.
+    """
+    fonction = signal.get("cle")
+    if fonction is None:
+        return None
+    return fonction(proprietes)
+
+
+def libelle(signal, proprietes):
+    """Nom lisible de l'objet concerne, pour l'affichage. Vide si le signal
+    n'en propose pas."""
+    fonction = signal.get("libelle")
+    if fonction is None:
+        return ""
+    return fonction(proprietes)
