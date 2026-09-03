@@ -1,0 +1,17 @@
+# Fichiers compiles par Python
+__pycache__/
+*.pyc
+
+# Environnements virtuels
+.venv/
+venv/
+
+# Fichiers temporaires produits par le collecteur
+logsec_*.json
+
+# Donnees collectees sur des postes reels : elles contiennent des noms de
+# machines, de comptes et de peripheriques. Elles n'ont rien a faire dans un
+# depot, encore moins public.
+donnees/
+*.log
+rapport_*.txt
